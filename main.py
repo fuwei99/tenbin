@@ -110,34 +110,40 @@ def log_debug(message: str):
 
 
 def load_client_api_keys():
-    """Load client API keys from client_api_keys.json"""
+    """Load client API keys from client_api_keys.json or API_KEY environment variable."""
     global VALID_CLIENT_KEYS
     try:
         with open("client_api_keys.json", "r", encoding="utf-8") as f:
             keys = json.load(f)
             VALID_CLIENT_KEYS = set(keys) if isinstance(keys, list) else set()
-            print(f"Successfully loaded {len(VALID_CLIENT_KEYS)} client API keys.")
+            print(f"Successfully loaded {len(VALID_CLIENT_KEYS)} client API keys from file.")
     except FileNotFoundError:
-        print("Error: client_api_keys.json not found. Client authentication will fail.")
-        VALID_CLIENT_KEYS = set()
+        api_key_env = os.environ.get("API_KEY")
+        if api_key_env:
+            keys = [key.strip() for key in api_key_env.split(',') if key.strip()]
+            VALID_CLIENT_KEYS = set(keys)
+            print(f"Loaded {len(VALID_CLIENT_KEYS)} client API key(s) from API_KEY environment variable.")
+        else:
+            print("Warning: client_api_keys.json not found and API_KEY env var not set. Client authentication may fail.")
+            VALID_CLIENT_KEYS = set()
     except Exception as e:
-        print(f"Error loading client_api_keys.json: {e}")
+        print(f"Error loading client API keys: {e}")
         VALID_CLIENT_KEYS = set()
 
 
 def load_tenbin_accounts():
-    """Load Tenbin accounts from tenbin.json"""
+    """Load Tenbin accounts from tenbin.json or SESSION_ID environment variable."""
     global TENBIN_ACCOUNTS
     TENBIN_ACCOUNTS = []
     try:
         with open("tenbin.json", "r", encoding="utf-8") as f:
-            accounts = json.load(f)
-            if not isinstance(accounts, list):
+            accounts_data = json.load(f)
+            if not isinstance(accounts_data, list):
                 print("Warning: tenbin.json should contain a list of account objects.")
                 return
 
-            for acc in accounts:
-                session_id = acc.get("session_id")
+            for acc_data in accounts_data:
+                session_id = acc_data.get("session_id")
                 if session_id:
                     TENBIN_ACCOUNTS.append({
                         "session_id": session_id,
@@ -145,31 +151,62 @@ def load_tenbin_accounts():
                         "last_used": 0,
                         "error_count": 0
                     })
-            print(f"Successfully loaded {len(TENBIN_ACCOUNTS)} Tenbin accounts.")
+            print(f"Successfully loaded {len(TENBIN_ACCOUNTS)} Tenbin accounts from file.")
     except FileNotFoundError:
-        print("Error: tenbin.json not found. API calls will fail.")
+        session_ids_env = os.environ.get("SESSION_ID")
+        if session_ids_env:
+            session_ids = [sid.strip() for sid in session_ids_env.split(',') if sid.strip()]
+            for sid in session_ids:
+                TENBIN_ACCOUNTS.append({
+                    "session_id": sid,
+                    "is_valid": True,
+                    "last_used": 0,
+                    "error_count": 0
+                })
+            print(f"Successfully loaded {len(TENBIN_ACCOUNTS)} Tenbin account(s) from SESSION_ID environment variable.")
+        else:
+            print("Error: tenbin.json not found and SESSION_ID env var not set. API calls will fail.")
     except Exception as e:
         print(f"Error loading tenbin.json: {e}")
 
 
+def load_default_models():
+    """Load hardcoded default model mappings."""
+    global TENBIN_MODELS
+    TENBIN_MODELS = {
+        "claude-3-opus": "AnthropicClaude3Opus",
+        "claude-3-sonnet": "AnthropicClaude3Sonnet",
+        "claude-3-haiku": "AnthropicClaude3Haiku",
+        "claude-3.5-sonnet": "AnthropicClaude35Sonnet",
+        "claude-3.7-sonnet": "AnthropicClaude37Sonnet",
+        "claude-3.7-sonnet-extended": "AnthropicClaude37SonnetExtended",
+        "gpt-4o": "OpenAIGPT4o",
+        "gpt-4-turbo": "OpenAIGPT4Turbo",
+        "gemini-1.5-pro": "GoogleGemini15Pro",
+        "gemini-1.5-flash": "GoogleGemini15Flash",
+        "llama-3-70b": "MetaLLama370b"
+    }
+    print(f"Loaded {len(TENBIN_MODELS)} default models.")
+
+
 def load_tenbin_models():
-    """Load Tenbin models from models.json"""
+    """Load Tenbin models from models.json or use hardcoded defaults."""
     global TENBIN_MODELS
     try:
         with open("models.json", "r", encoding="utf-8") as f:
             models_data = json.load(f)
             if isinstance(models_data, dict):
                 TENBIN_MODELS = models_data
-                print(f"Successfully loaded {len(TENBIN_MODELS)} models.")
+                print(f"Successfully loaded {len(TENBIN_MODELS)} models from file.")
             else:
-                print("Warning: models.json should contain a dictionary of model mappings.")
-                TENBIN_MODELS = {}
+                print("Warning: models.json is not a dictionary. Using default models.")
+                load_default_models()
     except FileNotFoundError:
-        print("Error: models.json not found. Model list will be empty.")
-        TENBIN_MODELS = {}
+        print("Info: models.json not found. Loading default models.")
+        load_default_models()
     except Exception as e:
-        print(f"Error loading models.json: {e}")
-        TENBIN_MODELS = {}
+        print(f"Error loading models.json: {e}. Using default models.")
+        load_default_models()
 
 
 def get_best_tenbin_account() -> Optional[TenbinAccount]:
@@ -613,33 +650,16 @@ if __name__ == "__main__":
         DEBUG_MODE = True
         print("Debug mode enabled via environment variable")
 
-    if not os.path.exists("tenbin.json"):
-        print("Warning: tenbin.json not found. Creating a dummy file.")
-        dummy_data = [
-            {
-                "session_id": "your_session_id_here",
-            }
-        ]
-        with open("tenbin.json", "w", encoding="utf-8") as f:
-            json.dump(dummy_data, f, indent=4)
-        print("Created dummy tenbin.json. Please replace with valid Tenbin data.")
+    if not os.path.exists("tenbin.json") and not os.environ.get("SESSION_ID"):
+        print("Warning: tenbin.json not found and SESSION_ID env var not set. API calls will likely fail.")
+        print("         Consider creating tenbin.json or setting the SESSION_ID environment variable for local execution.")
 
-    if not os.path.exists("client_api_keys.json"):
-        print("Warning: client_api_keys.json not found. Creating a dummy file.")
-        dummy_key = f"sk-dummy-{uuid.uuid4().hex}"
-        with open("client_api_keys.json", "w", encoding="utf-8") as f:
-            json.dump([dummy_key], f, indent=2)
-        print(f"Created dummy client_api_keys.json with key: {dummy_key}")
+    if not os.path.exists("client_api_keys.json") and not os.environ.get("API_KEY"):
+        print("Warning: client_api_keys.json not found and API_KEY env var not set. Client auth will likely fail.")
+        print("         Consider creating client_api_keys.json or setting the API_KEY environment variable for local execution.")
 
     if not os.path.exists("models.json"):
-        print("Warning: models.json not found. Creating a dummy file.")
-        dummy_models = {
-            "claude-3.7-sonnet": "AnthropicClaude37Sonnet",
-            "claude-3.7-sonnet-extended": "AnthropicClaude37SonnetExtended"
-        }
-        with open("models.json", "w", encoding="utf-8") as f:
-            json.dump(dummy_models, f, indent=4)
-        print("Created dummy models.json.")
+        print("Info: models.json not found. Default models will be loaded automatically.")
 
     load_client_api_keys()
     load_tenbin_accounts()

@@ -38,6 +38,7 @@ RUN echo "[supervisord]" > /etc/supervisor/conf.d/supervisord.conf && \
 # 4. Configuration is now handled by environment variables (Secrets) in the Hugging Face Space.
 # No need to copy JSON files anymore.
 
-# 5. Set the entrypoint to run supervisord.
-# This will start and manage both services.
-CMD ["/usr/bin/supervisord", "-c", "/etc/supervisor/conf.d/supervisord.conf"]
+# 5. Override the base image's entrypoint and set supervisord as the main process.
+# This bypasses the original run.sh, which is not needed in the HF environment.
+ENTRYPOINT ["/usr/bin/supervisord"]
+CMD ["-c", "/etc/supervisor/conf.d/supervisord.conf"]

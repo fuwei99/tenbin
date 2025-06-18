@@ -1,6 +1,12 @@
 #!/bin/bash
 
 start_xrdp_services() {
+    # Ensure dbus is running as it is often required for Xrdp
+    if ! pgrep -x "dbus-daemon" > /dev/null
+    then
+        service dbus start
+    fi
+    
     rm -rf /var/run/xrdp-sesman.pid
     rm -rf /var/run/xrdp.pid
     rm -rf /var/run/xrdp/xrdp-sesman.pid
